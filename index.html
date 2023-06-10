@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Harbour Map with Markers</title>
+    <style>
+        #container {
+            display: flex;
+        }
+
+        #map {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: calc(100% * 2/3); /* Maintain aspect ratio of 3:2 */
+            background: url(harbour.jpg) center/contain no-repeat;
+            cursor: crosshair;
+        }
+
+        .marker {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .red { background-color: red; }
+        .blue { background-color: blue; }
+        .green { background-color: green; }
+        .yellow { background-color: yellow; }
+        .question {
+            background-color: white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            text-align: center;
+            line-height: 30px;
+            color: blue;
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .question::before {
+            content: "?";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #table-container {
+            width: 20%;
+            padding-left: 10px;
+        }
+
+        #marker-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #marker-table th,
+        #marker-table td {
+            padding: 5px;
+            border: 1px solid black;
+        }
+
+        #button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        #color-select {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="table-container">
+            <div id="button-container">
+                <input type="file" id="import-btn" accept=".txt">
+                <label for="color-select">Dot Color:</label>
+                <select id="color-select">
+                    <option value="red">Red</option>
+                    <option value="blue">Blue</option>
+                    <option value="green">Green</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="question">Question Mark</option>
+                </select>
+            </div>
+            <table id="marker-table">
+                <thead>
+                    <tr>
+                        <th>X</th>
+                        <th>Y</th>
+                        <th>Color</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <button id="export-btn">Export Table</button>
+        </div>
+    </div>
+
+    <script>
+        var markers = [];
+        var map = document.getElementById("map");
+        var mapWidth = map.offsetWidth;
+        var mapHeight = map.offsetHeight;
+        var mapAspectRatio = mapWidth / mapHeight;
+        var markerTable = document.getElementById("marker-table");
+
+        function createMarker(x, y, color) {
+            var marker = document.createElement("div");
+
+            if (color === "question") {
+                marker.className = "marker question";
+            } else {
+                marker.className = "marker " + color;
+            }
+
+            marker.style.left = x + "%";
+            marker.style.top = (y / mapAspectRatio) + "%";
+            map.appendChild(marker);
+
+            markers.push({ x: x, y: y, color: color });
+
+            var row = markerTable.insertRow();
+            var xCell = row.insertCell();
+            var yCell = row.insertCell();
+            var colorCell = row.insertCell();
+            var actionsCell = row.insertCell();
+
+            xCell.textContent = x.toFixed(2);
+            yCell.textContent = y.toFixed(2);
+            colorCell.textContent = color;
+            actionsCell.innerHTML = `
+                <select class="change-color-select">
+                    <option value="green">Green</option>
+                    <option value="blue">Blue</option>
+                    <option value="red">Red</option>
+                    <option value="question">Question Mark</option>
+                    <option value="delete">Delete</option>
+                </select>
+            `;
+
+            var changeColorSelect = row.querySelector(".change-color-select");
+            changeColorSelect.addEventListener("change", function () {
+                var selectedOption = changeColorSelect.value;
+                if (selectedOption === "delete") {
+                    // Remove the marker and table row
+                    marker.remove();
+                    row.remove();
+                    // Remove the marker from the markers array
+                    markers = markers.filter(function (marker) {
+                        return !(marker.x === x && marker.y === y && marker.color === color);
+                    });
+                } else {
+                    // Change the color
+                    colorCell.textContent = selectedOption;
+                    marker.className = "marker " + selectedOption;
+                }
+            });
+        }
+
+        function exportTable() {
+            var rows = Array.from(markerTable.getElementsByTagName("tr"));
+            var data = rows
+                .map(function (row) {
+                    var cells = Array.from(row.getElementsByTagName("td"));
+                    return cells
+                        .slice(0, cells.length - 1) // Exclude the last cell
+                        .map(function (cell) {
+                            return cell.textContent;
+                        })
+                        .join("\t");
+                })
+                .join("\n");
+
+            var link = document.createElement("a");
+            link.href = "data:text/plain;charset=utf-8," + encodeURIComponent(data);
+            link.download = "harbour.txt";
+            link.click();
+        }
+
+        function importTable(e) {
+            var file = e.target.files[0];
+            var reader = new FileReader();
+
+            reader.onload = function (event) {
+                var contents = event.target.result;
+                var lines = contents.split("\n");
+
+                clearMarkers();
+                markerTable.innerHTML = `<thead>
+                                            <tr>
+                                                <th>X</th>
+                                                <th>Y</th>
+                                                <th>Color</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>`;
+
+                lines.forEach(function (line) {
+                    var cells = line.split("\t");
+                    var x = parseFloat(cells[0]);
+                    var y = parseFloat(cells[1]);
+                    var color = cells[2];
+                    createMarker(x, y, color);
+                });
+            };
+
+            reader.readAsText(file);
+
+            // Reset the file input element
+            e.target.value = null; // Clear the selected file
+        }
+
+        function clearMarkers() {
+            markers = [];
+            markerTable.innerHTML = `<thead>
+                                        <tr>
+                                            <th>X</th>
+                                            <th>Y</th>
+                                            <th>Color</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>`;
+            map.innerHTML = "";
+        }
+
+        map.addEventListener("click", function (event) {
+            var rect = map.getBoundingClientRect();
+            var x = ((event.clientX - rect.left) / mapWidth) * 100;
+            var y = ((event.clientY - rect.top) / mapHeight) * 100 * mapAspectRatio;
+            var color = document.getElementById("color-select").value;
+            createMarker(x, y, color);
+        });
+
+        document.getElementById("export-btn").addEventListener("click", exportTable);
+        document.getElementById("import-btn").addEventListener("change", importTable);
+    </script>
+</body>
+</html>
